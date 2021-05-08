@@ -1,8 +1,11 @@
 package ru.home.telegram_bot.botapi;
+import com.vdurmont.emoji.EmojiParser;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.objects.Message;
 import java.util.*;
-
+import ru.home.telegram_bot.botapi.Button_handler;
+import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
+import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardButton;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Random;
@@ -19,46 +22,66 @@ public class Field {
     int[] pos_seats;
     private int move_count = 0;
 
-    public Field(int X_DIM, int Y_DIM) {
-        this.X_DIM = X_DIM;
-        this.Y_DIM = Y_DIM;
+    public Field(String complexity) {
+        if(complexity.contains("SMALL")){
+            this.X_DIM = 8;
+            this.Y_DIM = 8;
+        }
+        else if(complexity.contains("MEDIUM")){
+            this.X_DIM = 8;
+            this.Y_DIM = 10;
+        }
+        else if(complexity.contains("LARGE")){
+            this.X_DIM = 8;
+            this.Y_DIM = 12;
+        }
+        else { System.out.println("Error , not found size"); this.X_DIM = 8;this.Y_DIM = 8;}
         this.number_of_mines = 10;
+
         //this.generate_mines_location();
         //this.fill_matrix();
         //System.out.println(Arrays.deepToString(this.info_matrix));
     }
-    public SendMessage size_info(Message message) {
+    public SendMessage size_info(String message, long chatId) {
         String reply_text = "";
-        reply_text+="Current X_DIM: " +Integer.toString(X_DIM) + ", Current Y_DIM: " + Integer.toString(Y_DIM);
+        reply_text+="Current field is: " +Integer.toString(X_DIM) + "x" + Integer.toString(Y_DIM);
         reply_text+="\n";
-        reply_text+="In order to choose the level please write 'Level: HARD/MEDIUM/EASY' ";
-        SendMessage reply = new SendMessage(message.getChatId(),reply_text);
+        reply_text+="Please choose a complexity";
+        SendMessage reply = new SendMessage(chatId,reply_text);
+        reply.setReplyMarkup(Button_handler.complexityButtons());
         return reply;
     }
 
-    public SendMessage set_complexity(Message message) {
+    public String[][] getInfo_matrix() {
+        return info_matrix;
+    }
+
+    public SendMessage set_complexity(String message, long chatId) {
         //choose amount of mines
         //generate_mines_location
-        int number_of_mines;
-        String message_text = message.getText();
-        switch (message_text){
+        switch (message){
             case "EASY":
-                number_of_mines = X_DIM*Y_DIM/10;
+                this.number_of_mines = (X_DIM*Y_DIM)/9;
+                break;
             case "MEDIUM":
-                number_of_mines = X_DIM*Y_DIM/7;
+                this.number_of_mines = (X_DIM*Y_DIM)/8;
+                break;
             case "HARD":
-                number_of_mines = X_DIM*Y_DIM/5;
-            default:
-                number_of_mines = 10;
+                this.number_of_mines = (X_DIM*Y_DIM)/7;
+                break;
 
         }
-        setNumber_of_mines(number_of_mines);
+        setNumber_of_mines(this.number_of_mines);
         generate_mines_location();
         String answer = "";
-        answer+= print_matrix(message);
         answer+='\n';
-        answer+="In order to make a move please write 'Move: mine/free, x_coordinate , y_coordinate";
-        SendMessage reply = new SendMessage(message.getChatId() , answer);
+        answer+="Please choose a type of your next move:";
+        answer+='\n';
+        answer+="FREE - uncover the bracket";
+        answer+='\n';
+        answer+="MINE - flag the mine/unflag ";
+        SendMessage reply = new SendMessage(chatId , answer);
+        reply.setReplyMarkup(Button_handler.typeButtons());
         active = true;
         System.out.println(print_info_matrix());
         return reply;
@@ -67,32 +90,27 @@ public class Field {
     public boolean isActive() {
         return active;
     }
-    public SendMessage end_message(Message message){
+    public SendMessage end_message(String message,long chatId , Field field){
+        SendMessage reply;
         if(isVictory()){
-            SendMessage reply = new SendMessage(message.getChatId(),"You won! If you want to start new game - write 'Size: x_size , y_size' ");
+            reply = new SendMessage(chatId,"You won! If you want to start new game choose your new size ");
+            reply.setReplyMarkup(Button_handler.introductionButtons());
         }
-        SendMessage reply = new SendMessage(message.getChatId(),"You lost! If you want to start new game - write 'Size: x_size , y_size' ");
+        else {
+            reply = new SendMessage(chatId,"You lost! If you want to start new game choose your new size");
+            reply.setReplyMarkup(Button_handler.LostButtons(field,"info"));
+            //reply.setReplyMarkup(Button_handler.introductionButtons());
+        }
         return reply;
     }
 
-    public SendMessage print_matrix(Message message) {
+    public SendMessage print_matrix(String message, long chatId) {
         String answer = "";
-        answer+="   ";
-        for (int i = 0; i < Y_DIM; i++) {
-            answer+=(i + 1 + "  │  ");
-        }
+        answer+="To make your move - tap on the desired square";
         answer+="\n";
-        for (int i = 0; i < Y_DIM; i++) {
-            if (i > 0) answer+="\n";
-            answer+="   ";
-            answer+=(i + 1 + " │ ");
-            for (int j = 0; j < X_DIM; j++) {
-                answer+=(present_matrix[i][j] + "  ");
-            }
-            answer+=("│");
-        }
+        answer+= EmojiParser.parseToUnicode(":white_large_square:")+ "-> not_opened " + EmojiParser.parseToUnicode(":triangular_flag_on_post:") + "-> flag , "+EmojiParser.parseToUnicode(":1234:") + "- number of mines around the bracket";
         answer+="\n";
-        SendMessage reply = new SendMessage(message.getChatId(),answer);
+        SendMessage reply = new SendMessage(chatId,answer);
         return reply;
     }
     private String print_info_matrix() {
@@ -123,17 +141,20 @@ public class Field {
     public void generate_mines_location() {
         Random rand = new Random();
         mines_loc = new ArrayList<>(number_of_mines);
+        mines_loc.clear();
         int int_random;
         pos_seats = new int[X_DIM * Y_DIM];
         for (int i = 0; i < pos_seats.length; i++) {
             pos_seats[i] = i;
         }
-        for (int i = 0; i < number_of_mines; i++) {
+        for (int i = 0; i < this.number_of_mines; i++) {
             int_random = rand.nextInt(pos_seats.length - 1);
             mines_loc.add(pos_seats[int_random]);
             pos_seats = delete(pos_seats, int_random);
         }
+        System.out.println(mines_loc);
         fill_matrix();
+
 
 
     }
@@ -144,9 +165,11 @@ public class Field {
         present_matrix = new String[Y_DIM][X_DIM];
         for (int i = 0; i < Y_DIM; i++) {
             for (int j = 0; j < X_DIM; j++) {
-                row_value = i * Y_DIM + j;
+                row_value = i * X_DIM + j;
                 present_matrix[i][j] = ".";
                 if (mines_loc.contains(row_value)) {
+                    System.out.println("row_value: "+row_value);
+                    System.out.println("Y:" +i+" X:" + j);
                     info_matrix[i][j] = "X";
                 } else {
                     info_matrix[i][j] = ".";
@@ -197,7 +220,7 @@ public class Field {
 
             }
         } else if (guess_type.equals("mine")) {
-            int guess_number = Y_DIM * j_guess + i_guess;
+            int guess_number = X_DIM * j_guess + i_guess;
             System.out.println("guess number" + guess_number);
             if (present_matrix[j_guess][i_guess] == ".") {
                 if (mines_loc.contains(guess_number)) {
@@ -211,6 +234,7 @@ public class Field {
                 } else mines_loc.add(guess_number);
                 present_matrix[j_guess][i_guess] = ".";
             }
+            System.out.println(mines_loc);
         } else {
             System.out.println(guess_type);
             System.out.println("Guess type should be either 'free' or 'mine'");
@@ -221,11 +245,16 @@ public class Field {
     }
 
     public void clearing(int j_guess, int i_guess) {
-        if (info_matrix[j_guess][i_guess] != ".") {
+        if  (present_matrix[j_guess][i_guess].equals("*")) {
+            int guess_number = Y_DIM * j_guess + i_guess;
+            System.out.println("Clearing flag");
+            update_matrix(i_guess,j_guess,"mine");
+        }
+        else if (info_matrix[j_guess][i_guess] != ".") {
             present_matrix[j_guess][i_guess] = info_matrix[j_guess][i_guess];
             return;
         }
-        if (present_matrix[j_guess][i_guess] != "." & present_matrix[j_guess][i_guess] != "*") {
+        else if (present_matrix[j_guess][i_guess] == "/"){
             return;
         }
         present_matrix[j_guess][i_guess] = "/";
@@ -237,7 +266,6 @@ public class Field {
             }
         }
     }
-
     private boolean isVictory() {
         if (mines_loc.size() == 0) {
             return true;
@@ -245,6 +273,9 @@ public class Field {
         return false;
     }
 
+    public int getNumber_of_mines() {
+        return number_of_mines;
+    }
     public String[][] getPresent_matrix() {
         return present_matrix;
     }

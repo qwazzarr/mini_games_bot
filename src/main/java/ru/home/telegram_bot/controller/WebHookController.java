@@ -19,6 +19,10 @@ public class WebHookController {
 
     @RequestMapping(value = "/", method = RequestMethod.POST)
     public BotApiMethod<?> onUpdateReceived(@RequestBody Update update) {
-        return telegramBot.onWebhookUpdateReceived(update);
+        long startTime = System.nanoTime();
+        BotApiMethod<?> reply = telegramBot.onWebhookUpdateReceived(update);
+        long endTime = System.nanoTime();
+        System.out.println("Processing time :"+(endTime-startTime));
+        return reply;
     }
 }
